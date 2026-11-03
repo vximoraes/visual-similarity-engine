@@ -218,3 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Projeto
+assets/*
+!assets/.gitkeep
+
+# Anotações locais, não versionadas
+docs/local-ia/
