@@ -17,7 +17,7 @@ from app.cache import criar_redis, ping_redis
 from app.config import config
 from app.db import engine, ping_banco
 from app.rabbit import FILA_CLUSTERIZAR, declarar_exchange, declarar_fila
-from app.routes import clusters, similares
+from app.routes import admin, clusters, similares
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -144,3 +144,4 @@ async def healthz(request: Request) -> JSONResponse:
 
 app.include_router(similares.router)
 app.include_router(clusters.router)
+app.include_router(admin.router)
