@@ -1,0 +1,46 @@
+name: visual-similarity-engine
+
+# Dependências para desenvolvimento local. Em produção tudo sobe pelo compose do simila-api-gateway.
+# O RabbitMQ fica no profile "broker": rodando junto com o simila-imagens, use o broker dele
+# (mesma porta 5672) para receber os eventos de verdade. Sozinho: docker compose --profile broker up -d
+services:
+  # PostgreSQL 18 (uuidv7()) com a extensão pgvector
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vse
+      POSTGRES_PASSWORD: vse
+      POSTGRES_DB: vse
+    ports:
+      - "${DOCKER_POSTGRES_PORT:-5435}:5432"
+    volumes:
+      - vol-pg:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    # Cache puro: sem persistência, com teto de memória e descarte dos menos usados
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "${DOCKER_REDIS_PORT:-6380}:6379"
+
+  rabbitmq:
+    profiles: ["broker"]
+    image: rabbitmq:4-management-alpine
+    restart: unless-stopped
+    hostname: rabbitmq
+    ports:
+      - "${DOCKER_RABBIT_AMQP:-5672}:5672"
+      - "${DOCKER_RABBIT_WEB:-15672}:15672"
+    volumes:
+      - vol-rabbitmq:/var/lib/rabbitmq
+
+volumes:
+  vol-pg:
+  vol-rabbitmq:

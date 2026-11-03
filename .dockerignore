@@ -1,0 +1,12 @@
+.venv
+.git
+.claude
+.env
+.mypy_cache
+.ruff_cache
+.pytest_cache
+__pycache__
+assets
+docs
+tests
+*.md
