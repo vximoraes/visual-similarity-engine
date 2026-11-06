@@ -62,7 +62,7 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["clip", "clip.*", "sklearn.*", "pgvector.*", "aio_pika.*", "torchvision.*"]
+module = ["clip", "clip.*", "sklearn.*", "pgvector.*", "aio_pika.*", "torchvision.*", "nltk.*"]
 ignore_missing_imports = true
 
 [tool.pytest]

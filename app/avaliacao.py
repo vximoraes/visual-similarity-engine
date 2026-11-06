@@ -2,9 +2,11 @@
 Métricas de qualidade da busca (sem banco, para testar isolado).
 
 Precisão@k de uma consulta = fração dos k primeiros resultados que são da categoria esperada. Os
-vizinhos são calculados de forma exata (produto interno entre vetores normalizados = cosseno), só
-dentro do conjunto avaliado: assim o número mede o modelo, sem a aproximação do HNSW e sem imagens
-de fora do conjunto, que não têm categoria.
+vizinhos são calculados de forma exata (produto interno entre vetores normalizados = cosseno),
+dentro do conjunto importado: o número mede o modelo, sem a aproximação do HNSW.
+
+Imagens da categoria SEM_CATEGORIA ("outros") ficam na base como vizinhas possíveis, como num acervo
+real, e contam como erro quando aparecem; mas não são avaliadas como consulta.
 """
 
 from collections import Counter
@@ -19,30 +21,36 @@ K = 10
 # Linhas por bloco no cálculo dos vizinhos: memória O(bloco * n) em vez de O(n²)
 BLOCO = 1024
 
-# Consulta de texto por categoria do conjunto: (português, inglês). Descrevem o conteúdo das fotos:
-# "decoração" no conjunto é de móveis; "arte", de pinturas; "moda", de roupas e sapatos
+SEM_CATEGORIA = "outros"
+
+# Consulta de texto por categoria da base (scripts/imagenet/grupos.csv): (português, inglês).
+# Descrevem o conteúdo das fotos: "felinos" tem gatos e grandes felinos; "decoração", móveis e
+# eletrodomésticos; "primatas", macacos
 CONSULTAS: dict[str, tuple[str, str]] = {
     "arquitetura": ("arquitetura", "architecture"),
-    "arte": ("pintura", "painting"),
     "cachorros": ("cachorro", "dog"),
-    "carros": ("carro", "car"),
     "comida": ("comida", "food"),
     "decoração": ("móveis", "furniture"),
-    "flores": ("flor", "flower"),
-    "gatos": ("gato", "cat"),
+    "felinos": ("felino", "feline"),
+    "insetos": ("inseto", "insect"),
+    "instrumentos": ("instrumento musical", "musical instrument"),
     "moda": ("roupa", "clothes"),
-    "montanhas": ("montanha", "mountain"),
+    "paisagens": ("paisagem", "landscape"),
+    "peixes": ("peixe", "fish"),
+    "primatas": ("macaco", "monkey"),
     "pássaros": ("pássaro", "bird"),
-    "praia": ("praia", "beach"),
+    "répteis": ("réptil", "reptile"),
+    "veículos": ("veículo", "vehicle"),
 }
 
 
 @dataclass(frozen=True)
 class Avaliacao:
     k: int
+    # Média das imagens avaliadas (todas menos SEM_CATEGORIA)
     geral: float
     por_categoria: dict[str, float]
-    # Precisão de cada imagem, na ordem da entrada
+    # Precisão de cada imagem, na ordem da entrada (calculada também para SEM_CATEGORIA)
     por_imagem: NDArray[np.float64]
     # Índices dos k vizinhos de cada imagem, do mais parecido para o menos
     vizinhos: NDArray[np.int64]
@@ -83,14 +91,19 @@ def precisao_dos_vizinhos(vetores: Vetores, categorias: list[str], k: int = K) -
     acertos = rotulos[vizinhos] == rotulos[:, None]
     por_imagem = acertos.mean(axis=1)
 
-    confusoes: dict[str, Counter[str]] = {c: Counter() for c in sorted(set(categorias))}
+    avaliadas = sorted(set(categorias) - {SEM_CATEGORIA})
+    if not avaliadas:
+        raise ValueError(f"nenhuma imagem com categoria (todas em {SEM_CATEGORIA!r})")
+
+    confusoes: dict[str, Counter[str]] = {c: Counter() for c in avaliadas}
     for i, categoria in enumerate(categorias):
-        confusoes[categoria].update(rotulos[vizinhos[i][~acertos[i]]].tolist())
+        if categoria != SEM_CATEGORIA:
+            confusoes[categoria].update(rotulos[vizinhos[i][~acertos[i]]].tolist())
 
     return Avaliacao(
         k=k,
-        geral=float(por_imagem.mean()),
-        por_categoria={c: float(por_imagem[rotulos == c].mean()) for c in sorted(set(categorias))},
+        geral=float(por_imagem[rotulos != SEM_CATEGORIA].mean()),
+        por_categoria={c: float(por_imagem[rotulos == c].mean()) for c in avaliadas},
         por_imagem=por_imagem,
         vizinhos=vizinhos,
         confusoes=confusoes,

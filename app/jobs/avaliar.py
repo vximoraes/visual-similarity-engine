@@ -84,7 +84,7 @@ async def carregar(pasta: Path) -> Conjunto:
 
 async def avaliar_texto(conjunto: Conjunto) -> Texto | None:
     """None quando nenhuma categoria da pasta tem consulta em `CONSULTAS`"""
-    presentes = sorted(set(conjunto.categorias))
+    presentes = sorted(set(conjunto.categorias) - {avaliacao.SEM_CATEGORIA})
     sem_consulta = [c for c in presentes if c not in avaliacao.CONSULTAS]
     if sem_consulta:
         log.warning("Categorias sem consulta de texto em CONSULTAS: %s", ", ".join(sem_consulta))
@@ -117,7 +117,8 @@ def tabelas_markdown(
     quantidade = {c: conjunto.categorias.count(c) for c in resultado.por_categoria}
     linhas = [
         f"Precisão@{resultado.k} geral dos semelhantes: **{porcentagem(resultado.geral)}** "
-        f"({len(conjunto.ids)} imagens, {len(quantidade)} categorias)",
+        f"({sum(quantidade.values())} imagens avaliadas em {len(quantidade)} categorias, "
+        f"{len(conjunto.ids)} na base)",
         "",
         "| Categoria | Imagens | Semelhantes | Mais confundida com |",
         "|---|---|---|---|",
@@ -207,6 +208,7 @@ def relatorio_html(resultado: avaliacao.Avaliacao, texto: Texto | None, conjunto
             "</section>"
         )
 
+    avaliadas = sum(c != avaliacao.SEM_CATEGORIA for c in conjunto.categorias)
     resumo_texto = (
         f"Texto em português: <b>{porcentagem(texto.media('pt'))}</b>, "
         f"em inglês: <b>{porcentagem(texto.media('en'))}</b>."
@@ -234,7 +236,8 @@ def relatorio_html(resultado: avaliacao.Avaliacao, texto: Texto | None, conjunto
 </head>
 <body>
 <h1>Relatório de avaliação</h1>
-<p class="resumo">{len(conjunto.ids)} imagens. Precisão@{resultado.k} dos semelhantes:
+<p class="resumo">{len(conjunto.ids)} imagens na base, {avaliadas} avaliadas.
+Precisão@{resultado.k} dos semelhantes:
 <b>{porcentagem(resultado.geral)}</b>.
 {resumo_texto}
 Borda verde: mesma categoria; vermelha: outra.</p>

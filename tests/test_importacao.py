@@ -120,18 +120,20 @@ async def test_importa_pasta_e_semelhantes_devolvem_vizinhos(
 async def test_avaliacao_de_grupos_separados(tmp_path: Path, dono: uuid.UUID) -> None:
     """11 imagens por categoria: com k=10 a precisão máxima é 100%"""
     for semente in range(11):
-        salvar(tmp_path / "gatos" / f"{semente}.jpg", imagem_jpeg(VERMELHO, 25, semente))
+        salvar(tmp_path / "felinos" / f"{semente}.jpg", imagem_jpeg(VERMELHO, 25, semente))
         salvar(tmp_path / "cachorros" / f"{semente}.jpg", imagem_jpeg(AZUL, 25, semente))
+        salvar(tmp_path / "outros" / f"{semente}.jpg", imagem_jpeg((20, 200, 40), 25, semente))
     await importar.executar(tmp_path, dono)
 
     resultado, texto = await avaliar.executar(tmp_path)
 
     assert resultado.geral == 1.0
-    assert set(resultado.por_categoria) == {"gatos", "cachorros"}
+    assert set(resultado.por_categoria) == {"felinos", "cachorros"}
     assert texto is not None
-    assert sorted(texto.consultas) == ["cachorro", "cat", "dog", "gato"]
+    assert sorted(texto.consultas) == ["cachorro", "dog", "feline", "felino"]
     relatorio = (tmp_path / "relatorio.html").read_text(encoding="utf-8")
-    assert 'src="gatos/0.jpg"' in relatorio
+    assert 'src="felinos/0.jpg"' in relatorio
+    assert "<h2>outros" not in relatorio
 
 
 def test_thumbnail_de_cmyk_sai_em_rgb() -> None:
@@ -177,8 +179,8 @@ async def test_avaliacao_sem_consulta_de_texto_mede_so_os_semelhantes(
 async def test_avaliacao_com_poucas_imagens_explica_o_motivo(
     tmp_path: Path, dono: uuid.UUID
 ) -> None:
-    salvar(tmp_path / "gatos" / "a.jpg", imagem_jpeg(VERMELHO))
-    salvar(tmp_path / "gatos" / "b.jpg", imagem_jpeg(AZUL))
+    salvar(tmp_path / "felinos" / "a.jpg", imagem_jpeg(VERMELHO))
+    salvar(tmp_path / "felinos" / "b.jpg", imagem_jpeg(AZUL))
     await importar.executar(tmp_path, dono)
 
     with pytest.raises(SystemExit, match="não bastam"):

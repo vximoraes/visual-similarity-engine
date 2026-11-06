@@ -73,12 +73,31 @@ def test_precisao_do_texto() -> None:
     assert set(resultados[1].tolist()) == {3, 4, 5}
 
 
-def test_toda_categoria_do_conjunto_tem_consulta_de_texto() -> None:
-    manifesto = Path(__file__).resolve().parent.parent / "scripts" / "dataset" / "manifesto.csv"
-    with manifesto.open(newline="", encoding="utf-8") as arquivo:
-        categorias = {linha["categoria"] for linha in csv.DictReader(arquivo)}
+def test_toda_categoria_da_base_tem_consulta_de_texto() -> None:
+    grupos = Path(__file__).resolve().parent.parent / "scripts" / "imagenet" / "grupos.csv"
+    with grupos.open(newline="", encoding="utf-8") as arquivo:
+        categorias = {linha["grupo"] for linha in csv.DictReader(arquivo)}
 
-    assert categorias == set(avaliacao.CONSULTAS)
+    assert categorias - {avaliacao.SEM_CATEGORIA} == set(avaliacao.CONSULTAS)
+
+
+def test_sem_categoria_conta_como_vizinho_errado_mas_nao_e_avaliada() -> None:
+    # 3 "a" juntos e 3 "outros" colados neles: com k=4, cada "a" pega 2 "a" e 2 "outros"
+    vetores = grupos([[1, 0], [0.98, 0.2]], por_grupo=3, ruido=0.001)
+    categorias = ["a"] * 3 + [avaliacao.SEM_CATEGORIA] * 3
+
+    resultado = avaliacao.precisao_dos_vizinhos(vetores, categorias, k=4)
+
+    assert resultado.geral == pytest.approx(0.5)
+    assert resultado.por_categoria == {"a": pytest.approx(0.5)}
+    assert set(resultado.confusoes) == {"a"}
+    assert resultado.confusoes["a"] == {avaliacao.SEM_CATEGORIA: 6}
+
+
+def test_base_so_com_sem_categoria() -> None:
+    vetores = grupos([[1, 0]], por_grupo=12)
+    with pytest.raises(ValueError, match="nenhuma imagem com categoria"):
+        avaliacao.precisao_dos_vizinhos(vetores, [avaliacao.SEM_CATEGORIA] * 12)
 
 
 def test_texto_com_menos_imagens_que_k() -> None:

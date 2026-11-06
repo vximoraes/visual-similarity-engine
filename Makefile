@@ -1,4 +1,4 @@
-.PHONY: check lint format typecheck test migrate api worker clusterizar dataset importar avaliar
+.PHONY: check lint format typecheck test migrate api worker clusterizar imagenet importar avaliar
 
 # Pasta do conjunto de avaliação (uma subpasta por categoria)
 PASTA ?= assets
@@ -32,9 +32,9 @@ worker:
 clusterizar:
 	uv run python -m app.jobs.clusterizar
 
-# Baixa o conjunto de imagens reais do manifesto (scripts/dataset/manifesto.csv)
-dataset:
-	uv run python scripts/baixar_dataset.py $(PASTA)
+# Extrai a base do professor (zip "Imagenet Dataset Mini") em $(PASTA)/<categoria>/
+imagenet:
+	uv run python scripts/preparar_imagenet.py "$(ZIP)" $(PASTA)
 
 importar:
 	uv run python -m app.jobs.importar $(PASTA)
