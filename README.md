@@ -15,7 +15,7 @@ Atende em `/api/similar` atrás do gateway (porta `8000`) e consome `image.proce
 | [docs/api.md](docs/api.md) | Rotas, exemplos e eventos |
 | [docs/banco.md](docs/banco.md) | Modelo do banco vetorial e índices |
 | [docs/clusterizacao.md](docs/clusterizacao.md) | Como k, centroides e rótulos são escolhidos |
-| [docs/avaliacao.md](docs/avaliacao.md) | Conjunto de imagens reais, importação e qualidade medida (precisão@10) |
+| [docs/avaliacao.md](docs/avaliacao.md) | Base de imagens do professor, importação e qualidade medida (precisão@10) |
 | [docs/pendencias.md](docs/pendencias.md) | Decisões em aberto do grupo (busca por texto em português) |
 
 ## Stack
@@ -66,7 +66,7 @@ Documentadas no [.env.example](.env.example). Principais: `POSTGRES_URL`, `REDIS
 | `make clusterizar` | k-means sobre todos os embeddings e troca da execução ativa |
 | `make check` | ruff, mypy e testes: tem que passar antes de cada commit |
 | `make format` | Formata com ruff |
-| `make dataset` | Baixa o conjunto de avaliação (478 imagens reais) para `assets/` |
+| `make imagenet ZIP=<zip>` | Extrai a base do professor (3.923 imagens do ImageNet) em `assets/<categoria>/` |
 | `make importar` | Importa `assets/` direto no banco, sem fila nem storage; gera `assets/indice.json` |
 | `make avaliar` | Precisão@10 dos semelhantes e da busca por texto; gera `assets/relatorio.html` |
 
@@ -74,7 +74,7 @@ Os testes usam Postgres, Redis e RabbitMQ reais e o CLIP de verdade (`docker com
 na 5672 antes de `make test`). Eles limpam as tabelas no início: depois deles, rode `make importar` de novo
 se estiver usando o conjunto de avaliação.
 
-`dataset`, `importar` e `avaliar` aceitam outra pasta com `PASTA=<pasta>` (formato
+`imagenet`, `importar` e `avaliar` aceitam outra pasta com `PASTA=<pasta>` (formato
 `<pasta>/<categoria>/<imagem>`). Passo a passo e resultados em [docs/avaliacao.md](docs/avaliacao.md).
 
 ## Estrutura
@@ -94,6 +94,6 @@ app/cache.py           Redis
 app/rabbit.py          convenção de filas do grupo
 app/auth.py            JWT do Auth (JWKS)
 alembic/               migrações
-scripts/               baixar_dataset.py e montar_manifesto.py; dataset/ tem o manifesto e a revisão manual
+scripts/               preparar_imagenet.py e gerar_grupos_imagenet.py; imagenet/grupos.csv agrupa as classes
 assets/                conjunto de avaliação local (não versionado)
 ```

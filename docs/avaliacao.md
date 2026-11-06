@@ -1,84 +1,75 @@
 # Avaliação com imagens reais
 
-Até aqui o engine só tinha sido testado com quadrados coloridos. Este documento descreve o conjunto de
-imagens reais, como carregá-lo no banco e quanto o CLIP ViT-B/32 acerta nos **semelhantes** e na **busca
-por texto**. As etapas de categorias (k-means) e de desempenho usam o mesmo conjunto e os mesmos comandos.
+Até aqui o engine só tinha sido testado com quadrados coloridos. Este documento descreve como carregar a
+**base de imagens do professor** ("Imagenet Dataset Mini") no banco e quanto o CLIP ViT-B/32 acerta nos
+**semelhantes** e na **busca por texto**. As etapas de categorias (k-means) e de desempenho usam a mesma
+base e os mesmos comandos.
 
 ## Passo a passo
 
-Com o ambiente do README de pé (`docker compose up -d`, `uv sync`, `make migrate`):
+Com o ambiente do README de pé (`docker compose up -d`, `uv sync`, `make migrate`) e o zip da base do
+professor baixado (peça ao grupo; não é versionado):
 
 ```bash
-make dataset     # baixa as 478 imagens do manifesto para assets/<categoria>/ (~100 MB)
-make importar    # thumbnail 224 + embedding CLIP em lote + upsert no banco; gera assets/indice.json
+make imagenet ZIP="<caminho>/Imagenenet Dataset Mini.zip"   # 3.923 imagens em assets/<categoria>/ (~1 s)
+make importar    # thumbnail 224 + embedding CLIP em lote + upsert no banco (~2,5 min em CPU)
 make avaliar     # precisão@10, assets/relatorio.html e as tabelas deste documento
 ```
 
-Os três aceitam outra pasta com `PASTA=<pasta>` (ex.: `make importar PASTA=/tmp/fotos`), desde que ela
-siga o formato `<pasta>/<categoria>/<imagem>`.
+O `make imagenet` confere o sha256 do zip (`193336d3…89af5`) e avisa se a base for outra. Os três comandos
+aceitam outra pasta com `PASTA=<pasta>`, desde que ela siga o formato `<pasta>/<categoria>/<imagem>`.
 
 > **O `make test` limpa as tabelas do banco de desenvolvimento** (`tests/conftest.py`). Depois de rodar os
 > testes, rode `make importar` de novo. Os ids não mudam, porque vêm do `assets/indice.json`.
 
-## 1. Conjunto de imagens
+## 1. A base do professor
 
-**478 imagens em 12 categorias** com cara de Pinterest, de **288 autores** diferentes, todas com licença
-livre: 372 CC BY-SA, 55 CC BY, 29 CC0 e 22 em domínio público.
+São **3.923 imagens da validação do ImageNet (ILSVRC 2012), de 1.000 classes**: de 1 a 14 imagens por
+classe, 4 na mediana. Cada classe é um synset do WordNet (`n02123045` = tabby cat).
 
-| Categoria | Imagens | Categoria de origem no Wikimedia Commons |
-|---|---|---|
-| arquitetura | 40 | Quality images of buildings, of skyscrapers |
-| arte | 40 | Quality images of paintings (e subcategorias: murais, pintura cristã, miniaturas) |
-| cachorros | 40 | Quality images of dogs (e subcategorias) |
-| carros | 40 | Quality images of automobiles |
-| comida | 40 | Quality images of food |
-| decoração | 40 | Quality images of furniture, of chairs, of tables, of storage furniture |
-| flores | 40 | Quality images of flowers |
-| gatos | 38 | Quality images of cats (e subcategorias; só existem 38 elegíveis) |
-| moda | 40 | Quality images of clothing, of shoes |
-| montanhas | 40 | Quality images of mountains |
-| pássaros | 40 | Quality images of birds (e subcategorias) |
-| praia | 40 | Quality images of beaches |
+Com ~4 imagens por classe, a precisão@10 por classe não mede nada: quase nenhuma imagem tem 10 vizinhas
+possíveis da mesma classe. Por isso as classes são **agrupadas em categorias com cara de Pinterest pela
+própria hierarquia do WordNet**, que é a estrutura do ImageNet. Uma classe entra numa categoria quando
+descende de uma das raízes dela (`dog.n.01` para cachorros, `furniture.n.01` para decoração...).
 
-O nome de cada pasta é o rótulo em português do `VOCABULARIO` de `app/clusterizacao.py`. Assim, o rótulo
-automático do k-means pode ser comparado direto com a categoria real.
+| Categoria | Classes | Imagens | Exemplos de classes |
+|---|---|---|---|
+| cachorros | 118 | 433 | Afghan hound, Airedale, beagle, golden retriever |
+| veículos | 64 | 241 | airliner, ambulance, canoe, sports car, tractor |
+| moda | 49 | 200 | abaya, bikini, cardigan, cowboy boot, kimono |
+| pássaros | 59 | 197 | albatross, bald eagle, flamingo, toucan |
+| comida | 51 | 184 | bagel, banana, broccoli, pizza, cheeseburger |
+| arquitetura | 49 | 166 | barn, castle, church, mosque, palace, viaduct |
+| decoração | 33 | 153 | bookcase, china cabinet, rocking chair, refrigerator |
+| insetos | 36 | 142 | ant, bee, ladybug, monarch, tarantula |
+| répteis | 36 | 121 | African chameleon, alligator lizard, green mamba |
+| instrumentos | 26 | 111 | accordion, acoustic guitar, cello, grand piano |
+| primatas | 20 | 94 | baboon, capuchin, chimpanzee, gorilla |
+| felinos | 13 | 71 | Egyptian cat, tabby, cheetah, lion, leopard |
+| peixes | 16 | 57 | anemone fish, eel, goldfish, great white shark |
+| paisagens | 10 | 36 | alp, cliff, coral reef, lakeside, seashore, volcano |
+| **outros** | 420 | **1.717** | abacus, African elephant, ladle, oscilloscope |
 
-### Por que o Wikimedia Commons
+**Avaliadas: 2.206 imagens em 14 categorias.** As 1.717 de `outros` são classes sem categoria (ferramentas,
+eletrônicos, outros mamíferos...). Elas **são importadas** e entram na busca como vizinhas possíveis, como
+num acervo real, mas não são avaliadas como consulta. Quando aparecem entre os vizinhos de uma imagem
+avaliada, contam como erro.
 
-- As categorias **"Quality images"** só têm fotos aprovadas na revisão de qualidade da comunidade do
-  Commons: boa resolução, foco e enquadramento.
-- **A licença vem por arquivo**, com autor e link. Unsplash e Pexels exigem chave de API para buscar e o
-  resultado da busca muda com o tempo. COCO e Open Images não têm categorias como decoração, arte ou praia.
-- Os arquivos ficam em URLs públicas do Wikimedia, sem login nem cota.
+Regras do agrupamento (`scripts/gerar_grupos_imagenet.py`):
 
-### Reprodutibilidade
+1. A classe vai para a primeira categoria da lista que contém um ancestral dela. Só uma classe cai em
+   duas: `mobile home` é veículo e construção, e fica em veículos.
+2. O WordNet classifica pela definição e não pela foto: `menu` é comida, `seat belt` é roupa, `scoreboard`
+   é construção. **22 classes assim foram mandadas para `outros`** (`PARA_OUTROS`, com a lista no script).
+3. Categoria com menos de 30 imagens vai inteira para `outros` (hoje nenhuma; a menor, paisagens, tem 36).
 
-O conjunto é definido pelo **manifesto versionado** `scripts/dataset/manifesto.csv`: uma linha por imagem
-com categoria, arquivo, **sha256**, URL, página, autor e licença. O `make dataset`
-(`scripts/baixar_dataset.py`) baixa cada linha e confere o sha256. Arquivo que já existe e está íntegro
-não é baixado de novo. Num download do zero (~5 s nesta máquina), as 478 imagens bateram com o sha256 do
-manifesto.
+O resultado fica versionado em `scripts/imagenet/grupos.csv` (wnid, nome, categoria). O `make imagenet`
+usa só esse CSV. Para mudar o agrupamento, edite o script e rode
+`uv run --no-project --with nltk python scripts/gerar_grupos_imagenet.py <zip>`.
 
-As URLs são de **miniaturas de 960 px** (`thumb.wikimedia.org`), não do original (que somaria alguns GB).
-O Wikimedia pode regerar uma miniatura: a foto continua a mesma, mas os bytes mudam. Nesse caso o script
-mantém o arquivo e avisa no resumo ("sha256 difere do manifesto"). Download que falha encerra com código 1.
-
-O manifesto foi gerado por `scripts/montar_manifesto.py`, que **só precisa rodar de novo para mudar o
-conjunto**. As regras de seleção dele:
-
-1. Só JPEG, com licença CC0, domínio público, CC BY ou CC BY-SA.
-2. Lado menor de pelo menos 640 px e proporção entre 1:2 e 2:1. Num panorama, o center crop de 224x224
-   perderia quase toda a foto.
-3. Arquivo que está em mais de uma categoria do conjunto fica de fora, porque o rótulo seria ambíguo.
-4. **Revisão a olho**: as fotos escolhidas foram conferidas uma a uma e 133 foram reprovadas por não
-   representarem a categoria. Exemplos: atletas em competição em "clothing", ruas cheias de casas em
-   "automobiles", cadeiras de praia e assentos de estádio em "furniture", penas e mosaicos em "birds". Cada
-   reprovação está em `scripts/dataset/revisao_manual.csv` com o motivo.
-5. Até 40 por categoria, alternando entre autores para que a série de um fotógrafo não domine a
-   categoria. A ordem vem de um hash fixo (semente 42 + pageid), então reprovar uma foto só puxa a próxima
-   da fila e não embaralha o resto da seleção.
-
-O `assets/` não é versionado: o manifesto é a fonte, e as atribuições (autor, licença, página) ficam nele.
+A imagem é extraída como `assets/<categoria>/<wnid>_<arquivo>.JPEG`: a classe original fica no nome do
+arquivo e, portanto, no `indice.json`. As imagens do ImageNet são para uso em pesquisa e ensino, por isso
+ficam só em `assets/`, que não é versionado.
 
 ## 2. Importação direta
 
@@ -87,9 +78,8 @@ sujar o bucket compartilhado do grupo. Para cada imagem:
 
 1. Gera a thumbnail **igual à do simila-imagens** (`src/lib/processamento.ts`, sharp): aplica a orientação
    do EXIF, põe a transparência sobre branco, converte para sRGB pelo perfil ICC embutido (Adobe RGB,
-   Display P3, CMYK), redimensiona cobrindo 224x224 com corte
-   central (lanczos) e grava em JPEG qualidade 85. O CLIP recebe o que receberia de uma foto publicada
-   no app, inclusive os artefatos do JPEG.
+   Display P3, CMYK), redimensiona cobrindo 224x224 com corte central (lanczos) e grava em JPEG
+   qualidade 85. O CLIP recebe o que receberia de uma foto publicada no app, inclusive os artefatos do JPEG.
 2. Calcula os embeddings em lotes de `LOTE_MAX` imagens com `app.clip_model`.
 3. Classifica no centroide da clusterização ativa (como o worker) e grava com
    `repository.salvar_embeddings`. Os ids são `uuid7` e o dono é fixo:
@@ -101,132 +91,149 @@ da pasta, ou que já tinha sido importada e deixou de abrir como imagem, é apag
 (sem tombstone, porque não é exclusão de post). Arquivo novo que não abre como imagem é ignorado com
 aviso.
 
-Na máquina de referência (i7-13620H, 16 threads, torch CPU), a importação das 478 imagens leva **~19 s**,
-contando o carregamento do modelo (tempo total de `time make importar`). Medir desempenho a fundo é a
-etapa seguinte do engine.
+Na máquina de referência (i7-13620H, 16 threads, torch CPU), a importação das 3.923 imagens leva
+**~2,5 min** (tempo total de `time make importar`). Medir desempenho a fundo é a etapa seguinte do engine.
 
 ## 3. Método da avaliação
 
 `make avaliar` (`app/jobs/avaliar.py`, métricas em `app/avaliacao.py`):
 
-- **Precisão@10 dos semelhantes**: para cada imagem, a fração dos 10 vizinhos mais próximos (sem ela
-  mesma) que são da mesma categoria. Mostra a média geral, a média por categoria e de que categorias vêm
-  os vizinhos errados.
+- **Precisão@10 dos semelhantes**: para cada imagem avaliada, a fração dos 10 vizinhos mais próximos (sem
+  ela mesma, entre as 3.923) que são da mesma categoria. Mostra a média geral, a média por categoria e de
+  que categorias vêm os vizinhos errados.
 - **Precisão@10 da busca por texto**: para cada categoria, uma consulta em português e outra em inglês,
   codificadas pelo mesmo `codificar_textos` da rota `/api/similar/search-text`. Conta quantos dos 10
-  primeiros resultados são da categoria.
-- Os vizinhos são calculados de forma **exata** (cosseno) e **só dentro do conjunto**. Assim o número mede o
-  modelo, sem depender de imagens de fora do conjunto (que não têm categoria) e sem a aproximação do
-  HNSW. A diferença para a rota é desprezível: o HNSW (`ef_search=64`) devolveu **99,6%** dos mesmos 10
-  vizinhos do cálculo exato nas 478 consultas. A medição foi feita à mão, comparando
-  `repository.vizinhos` (o que a rota usa) com `avaliacao.vizinhos_exatos` para cada imagem do índice.
+  primeiros resultados, entre as 3.923, são da categoria.
+- Os vizinhos são calculados de forma **exata** (cosseno). A diferença para a rota, que usa o índice HNSW,
+  é desprezível: com `ef_search=64` o HNSW devolveu **99,9%** dos mesmos 10 vizinhos do cálculo exato nas
+  3.923 consultas. A medição foi feita à mão, comparando `repository.vizinhos` (o que a rota usa) com
+  `avaliacao.vizinhos_exatos` para cada imagem do índice.
 - `assets/relatorio.html` mostra, por categoria, a melhor e a pior consulta por imagem e as duas consultas
   de texto. Borda verde é acerto e vermelha é erro, com a similaridade de cada vizinho.
 
 ## 4. Resultados: semelhantes
 
-**Precisão@10 geral: 83,3%** (478 imagens, 12 categorias). Um palpite aleatório acertaria ~8%.
+**Precisão@10 geral: 72,2%** (2.206 imagens avaliadas em 14 categorias, 3.923 na base).
 
 | Categoria | Imagens | Precisão@10 | Mais confundida com (parcela dos erros) |
 |---|---|---|---|
-| arquitetura | 40 | 60,5% | montanhas (27,8%), arte (25,3%), decoração (24,7%) |
-| moda | 40 | 61,5% | decoração (30,5%), arte (13,0%), praia (9,7%) |
-| arte | 40 | 72,8% | decoração (38,5%), arquitetura (20,2%), moda (13,8%) |
-| decoração | 40 | 78,2% | praia (23,0%), arquitetura (20,7%), arte (16,1%) |
-| comida | 40 | 80,5% | flores (39,7%), decoração (19,2%), moda (16,7%) |
-| praia | 40 | 88,0% | montanhas (66,7%), moda (12,5%), arquitetura (8,3%) |
-| carros | 40 | 89,0% | decoração (43,2%), moda (22,7%), arquitetura (11,4%) |
-| montanhas | 40 | 89,5% | praia (78,6%), arquitetura (19,0%), flores (2,4%) |
-| cachorros | 40 | 91,2% | gatos (85,7%), montanhas (2,9%), praia (2,9%) |
-| gatos | 38 | 93,2% | decoração (38,5%), arquitetura (19,2%), cachorros (15,4%) |
-| flores | 40 | 97,0% | decoração (33,3%), comida (25,0%), gatos (16,7%) |
-| pássaros | 40 | 98,5% | gatos (50,0%), flores (50,0%) |
+| paisagens | 36 | 38,1% | arquitetura (30,9%), outros (22,9%), veículos (18,4%) |
+| arquitetura | 166 | 39,5% | outros (58,5%), veículos (11,4%), decoração (8,8%) |
+| decoração | 153 | 46,7% | outros (80,1%), arquitetura (6,9%), comida (4,4%) |
+| moda | 200 | 46,8% | outros (75,1%), instrumentos (6,1%), decoração (5,3%) |
+| veículos | 241 | 60,7% | outros (71,3%), arquitetura (13,6%), paisagens (5,0%) |
+| peixes | 57 | 62,8% | outros (65,6%), répteis (27,8%), paisagens (3,3%) |
+| instrumentos | 111 | 65,5% | outros (69,7%), moda (9,9%), decoração (7,0%) |
+| comida | 184 | 72,5% | outros (74,3%), arquitetura (7,5%), decoração (6,9%) |
+| répteis | 121 | 78,3% | outros (55,5%), peixes (11,4%), pássaros (9,1%) |
+| felinos | 71 | 82,7% | outros (56,1%), cachorros (34,1%), primatas (5,7%) |
+| insetos | 142 | 84,5% | outros (63,6%), répteis (20,5%), comida (7,3%) |
+| pássaros | 197 | 89,3% | outros (42,7%), primatas (25,6%), répteis (16,6%) |
+| primatas | 94 | 90,7% | outros (78,2%), répteis (8,0%), pássaros (6,9%) |
+| cachorros | 433 | 98,1% | outros (67,9%), felinos (22,6%), pássaros (2,4%) |
+
+Medições complementares (feitas à mão sobre os mesmos vizinhos):
+
+| Medida | Valor | O que mostra |
+|---|---|---|
+| Precisão@10 contando só os vizinhos que têm categoria | **85,6%** | Entre as categorias, o modelo quase não confunde; a maior parte do erro vem de `outros` |
+| Vizinhos que são de `outros` | 18,7% | `outros` é 43,8% da base, mas aparece bem menos que isso: o modelo separa o que é do tema |
+| Vizinho mais próximo da **mesma classe** do ImageNet (1.000 classes, acaso de 0,1%) | **35,1%** | Mesmo na granularidade fina (raça de cachorro, espécie de pássaro), 1 em 3 acerta no primeiro |
+| Imagens da mesma classe que aparecem no top 10 | 41,3% | |
 
 ### Onde erra e por quê
 
-- **Arquitetura (60,5%)** é a categoria mais heterogênea. "Buildings" no Commons vai de arranha-céu à noite
-  a igreja numa vila de montanha e alameda com neve. A foto é de **cena** e o CLIP a aproxima de outras
-  cenas: céu, vale e horizonte puxam para **montanhas**; fachadas e interiores ornamentados puxam para
-  **arte** e **decoração**. A pior consulta (10%) é uma alameda de árvores com neve, rotulada como prédio,
-  cujos vizinhos são paisagens.
-- **Moda (61,5%)** e **decoração (78,2%)** se confundem entre si. As duas têm muita foto de **objeto
-  isolado em fundo neutro ou de museu** (vestido em manequim, sapato, cômoda, cadeira) e o CLIP agrupa
-  pelo tipo de foto tanto quanto pelo objeto.
-- **Arte (72,8%)** perde para **decoração**: pintura com cena de interior (a pior consulta, de 0%, é um
-  artesão na oficina) fica perto de foto de interior com móveis. O CLIP olha o conteúdo da cena mais do
-  que o estilo, e pintura em moldura dourada também lembra móvel antigo.
-- **Praia e montanhas** respondem uma pela outra (67% e 79% dos erros de cada): costa rochosa, mar com
-  morro ao fundo e céu ocupando metade da foto aparecem nas duas.
-- **Comida → flores** (40% dos erros): close colorido de fruta ou doce em fundo desfocado se parece com
-  macro de flor.
-- **Cachorros → gatos** (86% dos erros): animal doméstico de pelo, no chão ou no sofá. Mesmo assim os dois
-  passam de 90%.
-- **Pássaros (98,5%) e flores (97,0%)** são visualmente homogêneos: fundo desfocado e um único sujeito em
-  destaque.
+- **Boa parte do "erro" é do agrupamento, não do modelo.** As classes de `outros` que mais aparecem como
+  vizinhas são do mesmo tema da categoria: `vault` (abóbada), `thatch` (telhado de palha) e `bell cote` para
+  arquitetura; `quilt`, `stove` e `desktop computer` para decoração; `wool`, `mailbag` e `bath towel`
+  para moda; `parachute`, `car wheel`, `wing` e `grille` para veículos; `timber wolf` para
+  cachorros. Para um usuário, esses vizinhos fazem sentido.
+- **Arquitetura (39,5%), decoração (46,7%) e moda (46,8%)** sofrem com a natureza do ImageNet: a classe
+  nomeia **um objeto**, mas a foto mostra **uma cena**. A pior consulta de `bow tie` (gravata-borboleta,
+  moda) é a foto de uma criança, e os 10 vizinhos são fotos de outras crianças (com gaita, estetoscópio,
+  bolhas de sabão). A de `shoe shop` (arquitetura) é uma prateleira cheia de sapatos, e os vizinhos são
+  outras pilhas de objetos coloridos (chapéus, caixas, óculos de sol).
+- **Paisagens (38,1%)** é a menor categoria (36 imagens), e as fotos dela costumam ter outro sujeito em
+  destaque: a pior de `seashore` (beira-mar) é um cachorro na praia, com 10 cachorros de vizinhos; a de `alp`
+  é um ciclista na montanha, com bicicletas e snowmobiles de vizinhos. `cliff` (falésia) puxa para
+  construções de pedra (`cliff dwelling`, `megalith`), que estão em arquitetura.
+- **Peixes → répteis e `outros`** (`dugong`, `sea cucumber`, `brain coral`): o fundo aquático pesa mais que
+  o animal.
+- **Animais vão bem**: cachorros (98,1%, 118 raças), primatas (90,7%) e pássaros (89,3%) têm o sujeito no
+  centro da foto, que é o caso ideal do CLIP. Cachorros e felinos se confundem entre si: um gato
+  doméstico (`tabby`) dentro de casa tem terriers pequenos entre os vizinhos.
 
-Para o k-means (etapa seguinte): espere arquitetura, arte, decoração e moda menos separadas; praia e
-montanhas podem cair num cluster só; cachorros e gatos ficam próximos.
+Para o k-means (etapa seguinte): animais devem formar clusters limpos; arquitetura, decoração e moda devem
+se misturar com `outros`. Os rótulos do `VOCABULARIO` não têm felinos, primatas, insetos, répteis, peixes
+nem instrumentos: vale conferir se o rótulo automático acerta essas categorias.
 
 ## 5. Resultados: busca por texto em português e em inglês
 
-Precisão@10 média: **português 72,5%** e **inglês 96,7%**.
+Precisão@10 média: **português 46,4%** e **inglês 80,7%**.
 
 | Categoria | Consulta PT | Precisão PT | Consulta EN | Precisão EN |
 |---|---|---|---|---|
-| arquitetura | arquitetura | 60,0% | architecture | 80,0% |
-| arte | pintura | 90,0% | painting | 90,0% |
-| cachorros | cachorro | 90,0% | dog | 100,0% |
-| carros | carro | 100,0% | car | 90,0% |
-| comida | comida | 90,0% | food | 100,0% |
-| decoração | móveis | **0,0%** | furniture | 100,0% |
-| flores | flor | 100,0% | flower | 100,0% |
-| gatos | gato | 100,0% | cat | 100,0% |
-| moda | roupa | 90,0% | clothes | 100,0% |
-| montanhas | montanha | 50,0% | mountain | 100,0% |
-| praia | praia | 100,0% | beach | 100,0% |
+| arquitetura | arquitetura | 50,0% | architecture | 30,0% |
+| cachorros | cachorro | 100,0% | dog | 100,0% |
+| comida | comida | 60,0% | food | 50,0% |
+| decoração | móveis | 10,0% | furniture | 100,0% |
+| felinos | felino | 90,0% | feline | 90,0% |
+| insetos | inseto | **0,0%** | insect | 100,0% |
+| instrumentos | instrumento musical | 90,0% | musical instrument | 100,0% |
+| moda | roupa | 90,0% | clothes | 80,0% |
+| paisagens | paisagem | 20,0% | landscape | 40,0% |
+| peixes | peixe | 30,0% | fish | 90,0% |
+| primatas | macaco | 100,0% | monkey | 100,0% |
 | pássaros | pássaro | **0,0%** | bird | 100,0% |
+| répteis | réptil | **0,0%** | reptile | 80,0% |
+| veículos | veículo | 10,0% | vehicle | 70,0% |
 
-As consultas descrevem o conteúdo das fotos (`CONSULTAS` em `app/avaliacao.py`): a categoria "decoração"
-do conjunto é de móveis, "arte" de pinturas e "moda" de roupas e sapatos.
+As consultas (`CONSULTAS` em `app/avaliacao.py`) descrevem o conteúdo das fotos: "felinos" tem gatos e
+grandes felinos, "decoração" tem móveis e eletrodomésticos, "primatas" tem macacos. Mesmo em inglês,
+`architecture` (30%) e `landscape` (40%) perdem para `outros` do mesmo tema: `dome`, `vault`, `thatch` e
+`bell cote` no primeiro; campos de `rapeseed` (canola) no segundo.
 
 ### Por que o português falha
 
 O encoder de texto do CLIP usa um tokenizador BPE treinado em legendas em inglês. Palavra em português
-só funciona quando é **cognata** de inglês ou aparece em legendas (nomes de lugar, marcas). Fora disso, ela
-vira pedaços sem sentido e o vetor cai num ponto genérico do espaço. **O acento não é a causa:** `passaro`
-sem acento falha do mesmo jeito.
+só funciona quando é **cognata** de inglês ou aparece em legendas. Fora disso, ela vira pedaços sem sentido
+e o vetor cai num ponto genérico do espaço.
 
 | Consulta | Tokens do CLIP | 3 categorias mais frequentes no top 10 |
 |---|---|---|
-| pássaro | `p` `á` `ss` `aro` | comida (3), arquitetura (2), gatos (1) |
-| passaro | `pas` `sar` `o` | arquitetura (2), praia (2), arte (2) |
-| ave | `ave` | comida (6), arte (1), moda (1) |
-| foto de um pássaro | `foto` `de` `um` `p` `á` `ss` `aro` | gatos (4), carros (3), arquitetura (1) |
-| móveis | `m` `ó` `ve` `is` | comida (5), arquitetura (4), praia (1) |
-| cadeira | `cade` `ira` | comida (3), arquitetura (3), praia (2) |
-| mesa | `mesa` | arquitetura (2), montanhas (2), praia (2) |
-| decoração | `decor` `a` `ç` `ão` | **decoração (7)**, arte (1), comida (1) |
-| edifício | `edi` `f` `í` `cio` | **arquitetura (9)**, praia (1) |
-| gato | `gato` | **gatos (10)** |
-| bird | `bird` | **pássaros (10)** |
+| pássaro | `p` `á` `ss` `aro` | outros (3), moda (2), cachorros (2) |
+| passaro | `pas` `sar` `o` | veículos (4), arquitetura (3), comida (1) |
+| inseto | `in` `se` `to` | outros (6), paisagens (1), comida (1) |
+| peixe | `pe` `ix` `e` | outros (3), peixes (3), comida (2) |
+| móveis | `m` `ó` `ve` `is` | comida (4), outros (3), decoração (1) |
+| cadeira | `cade` `ira` | comida (4), insetos (2), paisagens (1) |
+| réptil | `ré` `p` `til` | outros (4), veículos (2), comida (2) |
+| reptil | `rep` `til` | **répteis (9)**, outros (1) |
+| macaco | `mac` `aco` | **primatas (10)** |
+| felino | `fel` `ino` | **felinos (9)**, outros (1) |
+| cachorro | `ca` `chor` `ro` | **cachorros (10)** |
 
-O padrão é claro: `decoração` funciona por causa do `decor`, `edifício` por causa do `edi`, e `gato` e
-`carro` aparecem em legendas em inglês. Já `pássaro`, `cadeira` e `móveis` não têm parentes em inglês e
-falham por completo. Para um app em português, isso significa que a busca por texto funciona por acaso,
-dependendo da palavra.
+Há dois casos:
 
-A proposta de solução, com a medição de um encoder de texto multilíngue alinhado ao ViT-B/32 (português
-de 72,5% para 94,2% sem reprocessar as imagens), está em [pendencias.md](pendencias.md). A decisão é do
-grupo e nada foi implementado.
+- **A palavra não existe para o CLIP**, com ou sem acento: `pássaro` e `passaro`, `inseto`, `peixe`, `cadeira`.
+- **O acento quebra um cognato**: `reptil` sem acento vira `rep`, como em *reptile*, e acerta 9 de 10;
+  `réptil` com acento vira `ré` + `p` e acerta 0. Já `felino` (*feline*) e `macaco` funcionam.
+
+Para um app em português, isso significa que a busca por texto funciona por acaso, dependendo da palavra.
+
+A proposta de solução está em [pendencias.md](pendencias.md), com as alternativas medidas nesta mesma
+base. Traduzir a consulta para inglês leva o português a **80,7%**, o nível do inglês atual, mas derruba as
+buscas feitas em inglês para 69,3%. Um encoder de texto multilíngue leva o português a 66,4% e mantém o
+inglês. A decisão é do grupo e nada foi implementado.
 
 ## 6. Limitações
 
 - **Uma consulta de texto por categoria e idioma**: cada número da tabela de texto anda em passos de 10% e
-  depende da palavra escolhida. A média sobre 12 categorias é o número mais confiável. A investigação da
-  seção 5 mostra que a diferença entre os idiomas é sistemática e não sorte de uma palavra.
-- **Um rótulo por imagem**: uma foto de cachorro na praia é "cachorros"; se o vizinho for uma praia, conta
-  como erro. A regra 3 da seleção e a revisão manual reduzem isso, mas não zeram.
-- **As categorias do Commons não são o acervo do Pinterest**: há mais foto documental (museu, arquitetura
-  histórica) e menos foto de estilo de vida. Para o MVP o conjunto basta; um acervo com fotos de usuários
-  reais tende a ter mais selfies, prints e textos, que o conjunto não cobre.
-- **Gatos tem 38 imagens**: é tudo o que o Commons tem elegível nessa categoria.
+  depende da palavra escolhida. A média sobre 14 categorias é o número mais confiável. A análise de tokens
+  da seção 5 mostra que a diferença entre os idiomas é sistemática e não sorte de uma palavra.
+- **O rótulo é da classe do ImageNet, não da foto**: a foto de `seashore` com um cachorro em destaque conta
+  como paisagem. Os vizinhos "errados" que aparecem por isso são, na verdade, acertos para quem busca.
+- **O agrupamento é uma escolha**: outra divisão das 1.000 classes mudaria os números por categoria. A
+  precisão contando só vizinhos com categoria (85,6%) e o acerto da classe exata (35,1%) não dependem dela.
+- **O ImageNet não é o acervo do Pinterest**: as fotos são centradas num objeto, e há pouca foto de estilo
+  de vida, decoração de ambientes, prints e textos.
