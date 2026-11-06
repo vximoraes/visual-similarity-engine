@@ -40,10 +40,11 @@ make api                 # :8000
 make worker
 make clusterizar
 make check               # ruff + mypy + pytest
+make dataset && make importar && make avaliar   # imagens reais e precisão@10 (docs/avaliacao.md)
 uv run alembic revision -m "<descricao>"   # nova migração (escrita à mão, como a 0001)
 ```
 
 ## Documentação
 
-`docs/` (arquitetura, API, banco, clusterização). Mudou rota, evento, tabela ou algoritmo? Atualize o
-documento correspondente na mesma alteração.
+`docs/` (arquitetura, API, banco, clusterização, avaliação, pendências). Mudou rota, evento, tabela ou
+algoritmo? Atualize o documento correspondente na mesma alteração.
