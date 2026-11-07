@@ -40,12 +40,13 @@ make worker                   # outro terminal
 make clusterizar              # recalcula as categorias quando quiser
 ```
 
-Na primeira execução o CLIP baixa os pesos (~340 MB) para `~/.cache/clip`.
+Na primeira execução o CLIP baixa os pesos (~340 MB) para `~/.cache/clip`, e o tradutor da busca por texto
+(~300 MB) para `~/.cache/huggingface`.
 
 ### Com Docker
 
 ```bash
-docker build -t registry.fslab.dev/lc-t-simila/simila-similar:latest .   # ~2 GB, pesos do CLIP inclusos
+docker build -t registry.fslab.dev/lc-t-simila/simila-similar:latest .   # ~2,7 GB, pesos do CLIP e do tradutor inclusos
 docker run ... simila-similar                       # API
 docker run ... simila-similar python -m app.worker  # worker
 docker exec <container> alembic upgrade head        # migrações
@@ -54,7 +55,7 @@ docker exec <container> alembic upgrade head        # migrações
 ## Variáveis de ambiente
 
 Documentadas no [.env.example](.env.example). Principais: `POSTGRES_URL`, `REDIS_URL`, `AMQP_URL`,
-`AUTH_JWKS_URL`, `AUTH_ISSUER`, `MEDIA_BASE_URL`, `LOTE_MAX`/`LOTE_ESPERA_MS` (lote de inferência),
+`AUTH_JWKS_URL`, `AUTH_ISSUER`, `MEDIA_BASE_URL`, `TRADUZIR_BUSCA`/`TRADUCAO_MODELO` (busca por texto), `LOTE_MAX`/`LOTE_ESPERA_MS` (lote de inferência),
 `HNSW_EF_SEARCH`, `K_MIN`/`K_MAX`.
 
 ## Comandos

@@ -169,7 +169,25 @@ nem instrumentos: vale conferir se o rótulo automático acerta essas categorias
 
 ## 5. Resultados: busca por texto em português e em inglês
 
-Precisão@10 média: **português 46,4%** e **inglês 80,7%**.
+A rota `/search-text` **traduz a consulta para inglês antes do CLIP** (`app/traducao.py`, ligado por
+`TRADUZIR_BUSCA=true`, o padrão). A decisão veio desta avaliação:
+
+| Busca por texto | Português | Inglês |
+|---|---|---|
+| CLIP puro (`TRADUZIR_BUSCA=false`) | 46,4% | **80,7%** |
+| **Tradução + CLIP (padrão)** | **80,7%** | 69,3% |
+
+Os dois números vêm do `make avaliar`, que usa o mesmo caminho da rota (`traducao.codificar_consultas`).
+Para medir o CLIP puro, rode `TRADUZIR_BUSCA=false make avaliar`.
+
+Com a tradução, o português chega ao nível que o inglês tinha. O preço é que parte das consultas já em
+inglês piora, porque o tradutor as trata como se fossem de uma língua românica: `clothes` vira
+"eyelashes" (de 80% para 0%) e `furniture` vira "supplies" (de 100% para 10%). Como o app é em português,
+o ganho compensa. A alternativa para o inglês está em [pendencias.md](pendencias.md).
+
+### Sem a tradução: por que o português falha
+
+Precisão@10 do CLIP puro, consulta a consulta:
 
 | Categoria | Consulta PT | Precisão PT | Consulta EN | Precisão EN |
 |---|---|---|---|---|
@@ -192,8 +210,6 @@ As consultas (`CONSULTAS` em `app/avaliacao.py`) descrevem o conteúdo das fotos
 grandes felinos, "decoração" tem móveis e eletrodomésticos, "primatas" tem macacos. Mesmo em inglês,
 `architecture` (30%) e `landscape` (40%) perdem para `outros` do mesmo tema: `dome`, `vault`, `thatch` e
 `bell cote` no primeiro; campos de `rapeseed` (canola) no segundo.
-
-### Por que o português falha
 
 O encoder de texto do CLIP usa um tokenizador BPE treinado em legendas em inglês. Palavra em português
 só funciona quando é **cognata** de inglês ou aparece em legendas. Fora disso, ela vira pedaços sem sentido
@@ -219,12 +235,8 @@ Há dois casos:
 - **O acento quebra um cognato**: `reptil` sem acento vira `rep`, como em *reptile*, e acerta 9 de 10;
   `réptil` com acento vira `ré` + `p` e acerta 0. Já `felino` (*feline*) e `macaco` funcionam.
 
-Para um app em português, isso significa que a busca por texto funciona por acaso, dependendo da palavra.
-
-A proposta de solução está em [pendencias.md](pendencias.md), com as alternativas medidas nesta mesma
-base. Traduzir a consulta para inglês leva o português a **80,7%**, o nível do inglês atual, mas derruba as
-buscas feitas em inglês para 69,3%. Um encoder de texto multilíngue leva o português a 66,4% e mantém o
-inglês. A decisão é do grupo e nada foi implementado.
+Sem tradução, a busca em português funcionaria por acaso, dependendo da palavra. Com ela, as 14 consultas
+viram o termo certo em inglês (`pássaro` → "bird", `móveis` → "furniture", `réptil` → "reptile").
 
 ## 6. Limitações
 

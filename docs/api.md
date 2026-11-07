@@ -7,7 +7,7 @@ Prefixo `/api/similar` (o gateway repassa o path inteiro). OpenAPI em `GET /api/
 | Método | Rota | Auth | Descrição |
 |---|---|---|---|
 | GET | `/api/similar/images/{imageId}/similares?limite=30` | público | Imagens semelhantes (1 a 100), sem a própria |
-| GET | `/api/similar/search-text?q=<texto>&limite=30` | Bearer | Busca por descrição em texto (2 a 200 caracteres) |
+| GET | `/api/similar/search-text?q=<texto>&limite=30` | Bearer | Busca por descrição em texto (2 a 200 caracteres), traduzida para inglês antes do CLIP |
 | GET | `/api/similar/images/{imageId}` | público | Categoria (cluster) e distância ao centroide |
 | GET | `/api/similar/clusters` | público | Categorias da clusterização ativa |
 | GET | `/api/similar/clusters/{id}/images?limit=20&cursor=` | público | Imagens da categoria, mais típicas primeiro |
