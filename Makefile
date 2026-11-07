@@ -1,4 +1,7 @@
-.PHONY: check lint format typecheck test migrate api worker clusterizar
+.PHONY: check lint format typecheck test migrate api worker clusterizar imagenet importar avaliar
+
+# Pasta do conjunto de avaliação (uma subpasta por categoria)
+PASTA ?= assets
 
 # Tem que passar antes de cada commit
 check: lint typecheck test
@@ -12,7 +15,7 @@ format:
 	uv run ruff format .
 
 typecheck:
-	uv run mypy app tests
+	uv run mypy app tests scripts
 
 test:
 	uv run pytest
@@ -28,3 +31,13 @@ worker:
 
 clusterizar:
 	uv run python -m app.jobs.clusterizar
+
+# Extrai a base do professor (zip "Imagenet Dataset Mini") em $(PASTA)/<categoria>/
+imagenet:
+	uv run python scripts/preparar_imagenet.py "$(ZIP)" $(PASTA)
+
+importar:
+	uv run python -m app.jobs.importar $(PASTA)
+
+avaliar:
+	uv run python -m app.jobs.avaliar $(PASTA)

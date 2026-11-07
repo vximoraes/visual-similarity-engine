@@ -20,7 +20,7 @@ C4Container
   System_Ext(auth, "Auth", "JWKS")
 
   Container_Boundary(vse, "visual-similarity-engine") {
-    Container(api, "API", "FastAPI + CLIP (encoder de texto)", "Semelhantes, busca por texto, categorias")
+    Container(api, "API", "FastAPI + CLIP (encoder de texto) + MarianMT", "Semelhantes, busca por texto, categorias")
     Container(worker, "Worker", "Python + CLIP (encoder de imagem)", "Embeddings em lote, classificação, k-means")
     ContainerDb(pg, "Banco vetorial", "PostgreSQL 18 + pgvector", "Embeddings (HNSW), clusters, execuções")
     ContainerDb(redis, "Cache", "Redis", "Semelhantes por imagem e vetores de texto")
@@ -96,6 +96,7 @@ sequenceDiagram
 | Inferência | Lote de até `LOTE_MAX` imagens numa só chamada do CLIP; `torch.inference_mode()`; threads em `TORCH_THREADS` |
 | Modelo | Carregado uma vez por processo; pesos dentro da imagem Docker |
 | Entrada | Thumbnail 224x224 já no tamanho do CLIP: download pequeno, sem resize caro |
+| Busca por texto | Consulta traduzida para inglês por um MarianMT local (~85 ms) antes do encoder do CLIP (~25 ms); o vetor fica 1 dia no Redis |
 | Busca | Índice **HNSW** (`vector_cosine_ops`, m=16, ef_construction=64); `hnsw.ef_search` configurável |
 | Cache | Redis: semelhantes por imagem (TTL 5 min, invalidado quando o vetor muda ou é apagado) e vetor de cada busca de texto (TTL 1 dia). Redis fora do ar não derruba nada |
 | Categorias | Imagem nova é classificada na hora pelo centroide mais próximo (produto interno com k vetores em memória); o k-means pesado roda só sob demanda |
@@ -113,4 +114,5 @@ sequenceDiagram
 | Rótulo da categoria por zero-shot do CLIP | Centroide comparado com "a photo of <termo>" de um vocabulário (`app/clusterizacao.py`) |
 | Tombstone `imagens_excluidas` | Evento de exclusão pode chegar antes do processamento: o vetor não é recriado |
 | Filas `vse.*` | Não disputa mensagens com o `similaridade` do professor no mesmo broker |
+| Busca por texto traduzida para inglês (`TRADUZIR_BUSCA`) | O CLIP só foi treinado em inglês: em português a precisão@10 era 46,4% e com a tradução é 80,7% (`docs/avaliacao.md`); modelo local, sem serviço externo |
 | `search-text` exige login; semelhantes é público | A busca por texto roda o encoder (custo de CPU por requisição); semelhantes é leitura barata e cacheada, como a timeline pública |

@@ -3,7 +3,8 @@ Cache no Redis. Opcional por natureza: se o Redis cair, as rotas continuam (só 
 
 - similares:<imagem_id> (hash, campo = limite): resultado da busca de vizinhos. Apagado quando a
   imagem é excluída ou o vetor muda; o TTL cobre imagens novas que passariam a entrar na lista.
-- texto:<modelo>:<sha1(texto)>: embedding de uma busca por texto (o encoder de texto custa ~20 ms).
+- texto:<modelo>:<tradutor>:<sha1(texto)>: embedding de uma busca por texto (tradução e encoder
+  custam ~110 ms).
 """
 
 import hashlib
@@ -62,8 +63,10 @@ async def invalidar_similares(redis: Redis, ids: list[uuid.UUID]) -> None:
 
 
 def _chave_texto(texto: str) -> str:
+    """O vetor depende do CLIP e de a consulta ter sido traduzida ou não (e por qual modelo)"""
     resumo = hashlib.sha1(texto.strip().lower().encode()).hexdigest()
-    return f"texto:{config().clip_modelo}:{resumo}"
+    tradutor = config().traducao_modelo if config().traduzir_busca else "sem-traducao"
+    return f"texto:{config().clip_modelo}:{tradutor}:{resumo}"
 
 
 async def ler_vetor_texto(redis: Redis, texto: str) -> Vetores | None:

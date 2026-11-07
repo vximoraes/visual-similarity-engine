@@ -120,6 +120,15 @@ async def todos_embeddings(sessao: AsyncSession) -> tuple[list[uuid.UUID], Vetor
     return ids, vetores.reshape(len(ids), 512)
 
 
+async def embeddings_por_id(sessao: AsyncSession, ids: list[uuid.UUID]) -> dict[uuid.UUID, Vetores]:
+    linhas = await sessao.execute(
+        select(EmbeddingImagem.imagem_id, EmbeddingImagem.embedding).where(
+            EmbeddingImagem.imagem_id.in_(ids)
+        )
+    )
+    return {linha.imagem_id: np.asarray(linha.embedding, dtype=np.float32) for linha in linhas}
+
+
 async def listar_clusters(sessao: AsyncSession, execucao_id: uuid.UUID) -> list[Cluster]:
     return list(
         await sessao.scalars(

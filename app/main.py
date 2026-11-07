@@ -11,7 +11,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app import clip_model
+from app import clip_model, traducao
 from app.auth import criar_jwks
 from app.cache import criar_redis, ping_redis
 from app.config import config
@@ -31,6 +31,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # O encoder de texto do CLIP fica na API (busca por texto). Carregar no start evita que a
     # primeira busca espere ~2 s
     app.state.clip = await asyncio.to_thread(clip_model.carregar)
+    app.state.tradutor = await asyncio.to_thread(traducao.carregar)
     # Conexão robusta: reconecta sozinha; a API sobe mesmo com o broker fora (healthz fica 503)
     app.state.amqp = await aio_pika.connect_robust(config().amqp_url, fail_fast=False)
     canal = await app.state.amqp.channel()
