@@ -16,6 +16,9 @@ RUN uv sync --frozen --no-dev --no-install-project
 # O clip.load guarda os pesos em ~/.cache/clip: HOME=/app deixa isso dentro de /app
 ENV HOME=/app
 RUN .venv/bin/python -c "import clip; clip.load('ViT-B/32', device='cpu', jit=False)"
+# Tradutor da busca por texto (TRADUCAO_MODELO): pesos em ~/.cache/huggingface, dentro de /app
+RUN .venv/bin/python -c "from transformers import MarianMTModel, MarianTokenizer; \
+n = 'Helsinki-NLP/opus-mt-ROMANCE-en'; MarianTokenizer.from_pretrained(n); MarianMTModel.from_pretrained(n)"
 
 COPY app ./app
 COPY alembic ./alembic
@@ -31,6 +34,8 @@ WORKDIR /app
 ENV PATH="/app/.venv/bin:$PATH" \
     HOME=/app \
     PYTHONUNBUFFERED=1 \
+    # Os pesos do tradutor já estão na imagem: não consulta o Hugging Face ao subir
+    HF_HUB_OFFLINE=1 \
     # O Uvicorn passa a confiar no X-Forwarded-* vindo do gateway
     FORWARDED_ALLOW_IPS="*"
 

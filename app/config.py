@@ -22,6 +22,10 @@ class Config(BaseSettings):
     clip_modelo: str = "ViT-B/32"
     torch_threads: int = 0
 
+    # Busca por texto: traduz a consulta para inglês antes do CLIP (docs/avaliacao.md)
+    traduzir_busca: bool = True
+    traducao_modelo: str = "Helsinki-NLP/opus-mt-ROMANCE-en"
+
     # Worker: lote de inferência (até N mensagens ou T ms, o que vier primeiro)
     lote_max: int = 16
     lote_espera_ms: int = 200

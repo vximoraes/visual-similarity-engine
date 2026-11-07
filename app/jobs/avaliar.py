@@ -4,7 +4,7 @@ Mede a qualidade dos semelhantes e da busca por texto no conjunto importado por 
 - Semelhantes: precisão@10 de cada imagem (quantos dos 10 vizinhos são da mesma categoria), média
   geral e por categoria, e as categorias que mais se confundem.
 - Texto: para cada categoria, uma consulta em português e outra em inglês ("cachorro" e "dog"),
-  codificadas pelo mesmo encoder de texto da rota `/search-text`.
+  com a mesma tradução e o mesmo encoder da rota `/search-text` (`traducao.codificar_consultas`).
 
 Gera `<pasta>/relatorio.html` (local, não versionado) com exemplos para olhar a olho e imprime as
 tabelas em Markdown para `docs/avaliacao.md`.
@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 
-from app import avaliacao, clip_model, repository
+from app import avaliacao, clip_model, repository, traducao
 from app.db import Sessao
 from app.jobs.importar import ler_indice
 
@@ -47,6 +47,8 @@ class Texto:
     idioma: list[str]
     precisoes: list[float]
     resultados: NDArray[np.int64]
+    # Modelo que traduziu as consultas para inglês; None com TRADUZIR_BUSCA=false
+    tradutor: str | None
 
     def media(self, idioma: str) -> float:
         valores = [p for p, i in zip(self.precisoes, self.idioma, strict=True) if i == idioma]
@@ -99,12 +101,14 @@ async def avaliar_texto(conjunto: Conjunto) -> Texto | None:
     if not consultas:
         return None
 
-    modelo = await asyncio.to_thread(clip_model.carregar)
-    vetores_texto = await asyncio.to_thread(modelo.codificar_textos, consultas)
+    clip = await asyncio.to_thread(clip_model.carregar)
+    tradutor = await asyncio.to_thread(traducao.carregar)
+    vetores_texto = await asyncio.to_thread(traducao.codificar_consultas, clip, tradutor, consultas)
     precisoes, resultados = avaliacao.precisao_do_texto(
         vetores_texto, categorias, conjunto.vetores, conjunto.categorias
     )
-    return Texto(categorias, consultas, idiomas, precisoes, resultados)
+    nome = tradutor.nome if tradutor else None
+    return Texto(categorias, consultas, idiomas, precisoes, resultados, nome)
 
 
 def porcentagem(valor: float) -> str:
@@ -140,7 +144,8 @@ def tabelas_markdown(
     linhas += [
         "",
         f"Busca por texto, precisão@{resultado.k}: português **{porcentagem(texto.media('pt'))}**,"
-        f" inglês **{porcentagem(texto.media('en'))}**",
+        f" inglês **{porcentagem(texto.media('en'))}**"
+        f" ({'traduzidas por ' + texto.tradutor if texto.tradutor else 'sem tradução'})",
         "",
         "| Categoria | Consulta PT | Precisão PT | Consulta EN | Precisão EN |",
         "|---|---|---|---|---|",
@@ -211,7 +216,8 @@ def relatorio_html(resultado: avaliacao.Avaliacao, texto: Texto | None, conjunto
     avaliadas = sum(c != avaliacao.SEM_CATEGORIA for c in conjunto.categorias)
     resumo_texto = (
         f"Texto em português: <b>{porcentagem(texto.media('pt'))}</b>, "
-        f"em inglês: <b>{porcentagem(texto.media('en'))}</b>."
+        f"em inglês: <b>{porcentagem(texto.media('en'))}</b> "
+        f"({'traduzidas por ' + texto.tradutor if texto.tradutor else 'sem tradução'})."
         if texto
         else ""
     )

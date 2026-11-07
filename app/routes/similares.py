@@ -6,7 +6,7 @@ import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from app import cache, repository
+from app import cache, repository, traducao
 from app.auth import Usuario, usuario_atual
 from app.config import config
 from app.db import Sessao
@@ -64,10 +64,16 @@ async def buscar_por_texto(
     q: Annotated[str, Query(min_length=2, max_length=200)],
     limite: Limite = 30,
 ) -> Resposta[list[ItemSimilar]]:
-    """Codifica o texto com o encoder de texto do CLIP (mesmo espaço das imagens) e busca"""
+    """
+    Traduz o texto para inglês (o CLIP só foi treinado em inglês), codifica com o encoder de texto
+    do CLIP (mesmo espaço das imagens) e busca
+    """
     vetor = await cache.ler_vetor_texto(request.app.state.redis, q)
     if vetor is None:
-        vetor = (await asyncio.to_thread(request.app.state.clip.codificar_textos, [q]))[0]
+        estado = request.app.state
+        vetor = (
+            await asyncio.to_thread(traducao.codificar_consultas, estado.clip, estado.tradutor, [q])
+        )[0]
         await cache.gravar_vetor_texto(request.app.state.redis, q, vetor)
 
     async with Sessao() as sessao, sessao.begin():

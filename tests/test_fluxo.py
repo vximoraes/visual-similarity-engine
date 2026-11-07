@@ -125,6 +125,20 @@ async def test_busca_por_texto(cliente: AsyncClient, imagens: dict[str, list[uui
     assert ids == set(imagens["azul"])
 
 
+async def test_busca_por_texto_em_portugues(
+    cliente: AsyncClient, imagens: dict[str, list[uuid.UUID]]
+) -> None:
+    """Sem a tradução, o CLIP não entende "quadrado azul" (só foi treinado em inglês)"""
+    res = await cliente.get(
+        "/api/similar/search-text",
+        params={"q": "um quadrado azul", "limite": 4},
+        headers={"Authorization": f"Bearer {assinar()}"},
+    )
+    assert res.status_code == 200
+    ids = {uuid.UUID(i["imageId"]) for i in res.json()["data"]}
+    assert ids == set(imagens["azul"])
+
+
 async def test_token_de_outra_audiencia(cliente: AsyncClient) -> None:
     res = await cliente.get(
         "/api/similar/search-text",

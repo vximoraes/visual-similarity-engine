@@ -19,10 +19,13 @@ dependencies = [
     "python-dotenv==1.2.4",
     "redis==8.1.0",
     "regex==2026.9.29",
+    "sacremoses==0.2.0",
     "scikit-learn==1.9.1",
+    "sentencepiece==0.2.3",
     "sqlalchemy[asyncio]==2.1.6",
     "torch==2.15.0",
     "torchvision==0.29.2",
+    "transformers==5.22.2",
 ]
 
 [dependency-groups]
