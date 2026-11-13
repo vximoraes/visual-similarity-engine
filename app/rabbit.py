@@ -9,7 +9,10 @@ O prefixo das filas é `vse` (e não `similar`) para não disputar mensagens com
 um recebe sua cópia do evento.
 """
 
-from aio_pika import ExchangeType
+import json
+from datetime import UTC, datetime
+
+from aio_pika import DeliveryMode, ExchangeType, Message
 from aio_pika.abc import AbstractChannel, AbstractExchange, AbstractQueue
 
 EXCHANGE = "simila"
@@ -18,6 +21,18 @@ SERVICO = "vse"
 
 # Fila interna (não é evento do grupo): pedidos de reclusterização feitos pela rota admin
 FILA_CLUSTERIZAR = f"{SERVICO}.comandos.clusterizar"
+
+
+async def pedir_clusterizacao(exchange: AbstractExchange, pedido_por: str) -> None:
+    corpo = {"pedidoPor": pedido_por, "pedidoEm": datetime.now(UTC).isoformat()}
+    await exchange.publish(
+        Message(
+            json.dumps(corpo).encode(),
+            content_type="application/json",
+            delivery_mode=DeliveryMode.PERSISTENT,
+        ),
+        routing_key=FILA_CLUSTERIZAR,
+    )
 
 
 def nome_da_fila(routing_key: str) -> str:

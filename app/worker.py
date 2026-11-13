@@ -4,7 +4,7 @@ Worker: consome os eventos de imagem do Simila e mantém os embeddings.
 - image.processed.post: baixa a thumbnail 224 (pública), gera o embedding com o CLIP em lote,
   classifica no centroide mais próximo da clusterização ativa e grava no pgvector.
 - image.deleted.post: apaga o embedding e registra o tombstone.
-- vse.comandos.clusterizar: roda o k-means (pedido pela rota admin).
+- vse.comandos.clusterizar: roda o k-means (pedido pela rota admin ou pelo próprio worker).
 
 Rodar: `uv run python -m app.worker`
 """
@@ -28,7 +28,13 @@ from app import cache, clip_model, clusterizacao, repository
 from app.config import config
 from app.db import Sessao
 from app.jobs import clusterizar
-from app.rabbit import FILA_CLUSTERIZAR, declarar_exchange, declarar_fila, declarar_fila_do_evento
+from app.rabbit import (
+    FILA_CLUSTERIZAR,
+    declarar_exchange,
+    declarar_fila,
+    declarar_fila_do_evento,
+    pedir_clusterizacao,
+)
 
 log = logging.getLogger("worker")
 
@@ -103,6 +109,7 @@ class Worker:
         self.redis = cache.criar_redis()
         self.modelo = clip_model.carregar()
         self.centroides = Centroides()
+        self.pedido_automatico: clusterizar.PedidoAutomatico | None = None
 
     async def ao_processar(self, mensagem: AbstractIncomingMessage) -> None:
         try:
@@ -191,6 +198,11 @@ class Worker:
         for pendente, _ in validos:
             await pendente.mensagem.ack()
         log.info("Lote de %d embeddings gravado", len(validos))
+        if self.pedido_automatico is not None:
+            try:
+                await self.pedido_automatico.verificar()
+            except Exception:
+                log.exception("Falha ao verificar o recálculo automático das categorias")
 
     async def loop_de_lotes(self) -> None:
         """Junta até LOTE_MAX mensagens ou espera LOTE_ESPERA_MS, o que vier primeiro"""
@@ -250,6 +262,9 @@ async def principal() -> None:
         canal_outros, exchange_outros, "image.deleted.post"
     )
     fila_comandos = await declarar_fila(canal_outros, FILA_CLUSTERIZAR)
+    worker.pedido_automatico = clusterizar.PedidoAutomatico(
+        lambda: pedir_clusterizacao(canal_outros.default_exchange, "worker")
+    )
 
     await fila_processadas.consume(worker.ao_processar)
     await fila_excluidas.consume(worker.ao_excluir)

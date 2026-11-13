@@ -1,5 +1,6 @@
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 
 import numpy as np
 from sqlalchemy import delete, func, select, text, update
@@ -90,6 +91,13 @@ async def execucao_ativa(sessao: AsyncSession) -> ExecucaoClusterizacao | None:
     return await sessao.scalar(
         select(ExecucaoClusterizacao).where(ExecucaoClusterizacao.ativa.is_(True))
     )
+
+
+async def contar_novas(sessao: AsyncSession, desde: datetime | None) -> int:
+    consulta = select(func.count()).select_from(EmbeddingImagem)
+    if desde is not None:
+        consulta = consulta.where(EmbeddingImagem.atualizado_em > desde)
+    return int(await sessao.scalar(consulta) or 0)
 
 
 async def centroides_ativos(
