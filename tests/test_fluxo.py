@@ -11,13 +11,13 @@ from collections.abc import AsyncGenerator
 import aio_pika
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app import repository
 from app.config import config
 from app.db import Sessao
 from app.jobs import clusterizar
-from app.models import EmbeddingImagem
+from app.models import EmbeddingImagem, ExecucaoClusterizacao
 from app.rabbit import EXCHANGE
 from app.worker import principal
 from tests.conftest import assinar, imagem_jpeg, publicar_thumb
@@ -195,9 +195,18 @@ async def test_estatisticas_da_clusterizacao_ativa_so_para_admin(
     usuario = {"Authorization": f"Bearer {assinar()}"}
     assert (await cliente.get(rota, headers=usuario)).status_code == 403
 
+    admin = {"Authorization": f"Bearer {assinar(role='admin')}"}
+    async with Sessao() as sessao, sessao.begin():
+        await sessao.execute(update(ExecucaoClusterizacao).values(ativa=False))
+    sem_ativa = await cliente.get(rota, headers=admin)
+    assert sem_ativa.status_code == 404
+    assert sem_ativa.json() == {
+        "data": None,
+        "errors": [{"message": "Nenhuma clusterização ativa"}],
+    }
+
     config().k_max = 4
     execucao_id = await clusterizar.executar(forcar=True)
-    admin = {"Authorization": f"Bearer {assinar(role='admin')}"}
     res = await cliente.get(rota, headers=admin)
 
     assert res.status_code == 200
