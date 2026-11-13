@@ -64,9 +64,12 @@ async def executar(forcar: bool = False) -> uuid.UUID | None:
             log.warning("Clusterização não executada: %s", erro)
             return execucao_id
 
-        termos = [f"a photo of {termo}" for termo in clusterizacao.VOCABULARIO]
-        vetores_vocabulario = await asyncio.to_thread(modelo.codificar_textos, termos)
-        rotulos = clusterizacao.rotular(resultado.centroides, vetores_vocabulario)
+        vetores_vocabulario = await asyncio.to_thread(
+            clusterizacao.vetores_do_vocabulario, modelo.codificar_textos
+        )
+        rotulos = clusterizacao.rotular(
+            vetores, resultado.rotulos, resultado.k, vetores_vocabulario
+        )
 
         clusters: list[Cluster] = []
         for indice in range(resultado.k):
