@@ -50,6 +50,13 @@ def test_candidatos_respeitam_a_faixa_e_o_numero_de_amostras() -> None:
     assert candidatos_de_k(2, 2, 30) == []
 
 
+def test_acervo_menor_que_k_min_testa_de_2_ate_n_menos_1() -> None:
+    assert candidatos_de_k(5, 10, 40) == [2, 3, 4]
+    assert candidatos_de_k(12, 10, 40) == [10, 11]
+    resultado = clusterizar(grupos(centros=3, por_grupo=3), k_min=10, k_max=40)
+    assert resultado.k == 3
+
+
 def test_poucas_imagens_nao_clusteriza() -> None:
     with pytest.raises(AmostrasInsuficientes):
         clusterizar(grupos(1, 2), k_min=2, k_max=10)

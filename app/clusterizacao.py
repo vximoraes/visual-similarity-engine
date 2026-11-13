@@ -37,9 +37,10 @@ class AmostrasInsuficientes(Exception):
 def candidatos_de_k(n: int, k_min: int, k_max: int) -> list[int]:
     """Até CANDIDATOS_MAX valores de k entre k_min e min(k_max, n - 1), espaçados"""
     topo = min(k_max, n - 1)
-    if topo < k_min:
+    if topo < 2:
         return []
-    valores = np.unique(np.linspace(k_min, topo, num=min(CANDIDATOS_MAX, topo - k_min + 1)))
+    inicio = k_min if topo >= k_min else 2
+    valores = np.unique(np.linspace(inicio, topo, num=min(CANDIDATOS_MAX, topo - inicio + 1)))
     return [int(v) for v in valores]
 
 
