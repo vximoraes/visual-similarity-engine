@@ -187,6 +187,31 @@ async def test_clusterizar_separa_as_cores_e_classifica_imagens_novas(
     assert pagina.json()["data"]["nextCursor"] is not None
 
 
+async def test_estatisticas_da_clusterizacao_ativa_so_para_admin(
+    cliente: AsyncClient, imagens: dict[str, list[uuid.UUID]]
+) -> None:
+    rota = "/api/similar/admin/clusterizacoes/ativa"
+    assert (await cliente.get(rota)).status_code == 401
+    usuario = {"Authorization": f"Bearer {assinar()}"}
+    assert (await cliente.get(rota, headers=usuario)).status_code == 403
+
+    config().k_max = 4
+    execucao_id = await clusterizar.executar(forcar=True)
+    admin = {"Authorization": f"Bearer {assinar(role='admin')}"}
+    res = await cliente.get(rota, headers=admin)
+
+    assert res.status_code == 200
+    dados = res.json()["data"]
+    assert dados["id"] == str(execucao_id)
+    assert dados["k"] == len(dados["clusters"]) == 2
+    assert 0 < dados["silhueta"] <= 1
+    assert dados["ativadoEm"]
+    assert sum(c["tamanho"] for c in dados["clusters"]) == dados["amostras"]
+    for cluster in dados["clusters"]:
+        assert cluster["rotulo"]
+        assert 0 <= cluster["distanciaMedia"] < 1
+
+
 async def test_exclusao_remove_e_nao_volta(
     cliente: AsyncClient, imagens: dict[str, list[uuid.UUID]]
 ) -> None:

@@ -147,6 +147,26 @@ async def listar_clusters(sessao: AsyncSession, execucao_id: uuid.UUID) -> list[
     )
 
 
+async def estatisticas_clusters(
+    sessao: AsyncSession, execucao_id: uuid.UUID
+) -> list[tuple[Cluster, int, float | None]]:
+    linhas = await sessao.execute(
+        select(
+            Cluster,
+            func.count(EmbeddingImagem.imagem_id),
+            func.avg(EmbeddingImagem.distancia_centroide),
+        )
+        .outerjoin(EmbeddingImagem, EmbeddingImagem.cluster_id == Cluster.id)
+        .where(Cluster.execucao_id == execucao_id)
+        .group_by(Cluster.id)
+        .order_by(func.count(EmbeddingImagem.imagem_id).desc(), Cluster.indice)
+    )
+    return [
+        (cluster, int(tamanho), None if media is None else float(media))
+        for cluster, tamanho, media in linhas
+    ]
+
+
 async def imagens_do_cluster(
     sessao: AsyncSession, cluster_id: uuid.UUID, limite: int, apos: float | None
 ) -> list[tuple[uuid.UUID, float]]:
