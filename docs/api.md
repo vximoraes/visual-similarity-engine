@@ -12,6 +12,7 @@ Prefixo `/api/similar` (o gateway repassa o path inteiro). OpenAPI em `GET /api/
 | GET | `/api/similar/clusters` | público | Categorias da clusterização ativa |
 | GET | `/api/similar/clusters/{id}/images?limit=20&cursor=` | público | Imagens da categoria, mais típicas primeiro |
 | POST | `/api/similar/admin/clusterizacoes` | Bearer admin | Agenda o recálculo das categorias (202) |
+| GET | `/api/similar/admin/clusterizacoes/ativa` | Bearer admin | Estatísticas da clusterização ativa (k, silhueta, tamanho e distância média por cluster) |
 | GET | `/api/similar/healthz` | público | 200/503 `{ status, banco, rabbitmq, redis }` (Redis não derruba o status) |
 | GET | `/api/similar/openapi.json` | público | Schema |
 
@@ -42,6 +43,28 @@ GET /api/similar/clusters
 }
 ```
 
+```json
+GET /api/similar/admin/clusterizacoes/ativa
+{
+  "data": {
+    "id": "01a1d309-...",
+    "k": 18,
+    "silhueta": 0.0725,
+    "amostras": 3923,
+    "ativadoEm": "2026-11-13T02:53:22.660Z",
+    "clusters": [
+      { "id": "01a1...", "rotulo": "insetos", "tamanho": 392, "distanciaMedia": 0.172 },
+      { "id": "01a1...", "rotulo": "cachorros", "tamanho": 259, "distanciaMedia": 0.150 }
+    ]
+  },
+  "errors": null
+}
+```
+
+Em `/admin/clusterizacoes/ativa`, `amostras` é quantas imagens entraram no k-means e `tamanho` é quantas
+estão no cluster agora (inclui as classificadas depois, pelo worker). `distanciaMedia` é a média de
+`1 - cosseno` ao centroide: subindo com o tempo, é sinal de que vale recalcular. Sem execução ativa, 404.
+
 Paginação de `/clusters/{id}/images`: `{ items: [ids], nextCursor }` (padrão do Posts); passe o
 `nextCursor` como `cursor` na próxima chamada; `null` na última página.
 
@@ -49,7 +72,7 @@ Paginação de `/clusters/{id}/images`: `{ items: [ids], nextCursor }` (padrão 
 |---|---|
 | 401 | Rota protegida sem token, token inválido ou de outra audiência |
 | 403 | Rota admin com `role` diferente de `admin` |
-| 404 | Imagem sem embedding (inexistente, excluída ou ainda processando); categoria fora da execução ativa |
+| 404 | Imagem sem embedding (inexistente, excluída ou ainda processando); categoria fora da execução ativa; nenhuma clusterização ativa |
 | 422 | Parâmetro inválido (ex.: `limite=0`, `q` curto) |
 | 503 | JWKS do Auth não respondeu |
 
@@ -59,7 +82,7 @@ Paginação de `/clusters/{id}/images`: `{ items: [ids], nextCursor }` (padrão 
 |---|---|---|---|
 | `vse.image.processed.post` | `image.processed.post` | simila-imagens | Gera e grava o embedding (usa `thumbnailUrl`; sem ela, monta `MEDIA_BASE_URL/<dono>/post/<id>_thumb.jpg`) |
 | `vse.image.deleted.post` | `image.deleted.post` | Posts | Apaga o embedding e grava o tombstone |
-| `vse.comandos.clusterizar` | (fila direta) | esta API | Roda o k-means, se houve imagens novas desde a última execução |
+| `vse.comandos.clusterizar` | (fila direta) | esta API e o próprio worker | Roda o k-means, se houve imagens novas desde a última execução |
 
 Todas com DLQ `<fila>.dlq` na `simila.dlx`. Payload inválido vai para a DLQ; thumbnail que não existe mais
 (404) é ignorada com ack.

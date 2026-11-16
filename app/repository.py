@@ -1,5 +1,6 @@
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 
 import numpy as np
 from sqlalchemy import delete, func, select, text, update
@@ -92,6 +93,13 @@ async def execucao_ativa(sessao: AsyncSession) -> ExecucaoClusterizacao | None:
     )
 
 
+async def contar_novas(sessao: AsyncSession, desde: datetime | None) -> int:
+    consulta = select(func.count()).select_from(EmbeddingImagem)
+    if desde is not None:
+        consulta = consulta.where(EmbeddingImagem.atualizado_em > desde)
+    return int(await sessao.scalar(consulta) or 0)
+
+
 async def centroides_ativos(
     sessao: AsyncSession,
 ) -> tuple[uuid.UUID | None, list[uuid.UUID], Vetores]:
@@ -137,6 +145,26 @@ async def listar_clusters(sessao: AsyncSession, execucao_id: uuid.UUID) -> list[
             .order_by(Cluster.tamanho.desc())
         )
     )
+
+
+async def estatisticas_clusters(
+    sessao: AsyncSession, execucao_id: uuid.UUID
+) -> list[tuple[Cluster, int, float | None]]:
+    linhas = await sessao.execute(
+        select(
+            Cluster,
+            func.count(EmbeddingImagem.imagem_id),
+            func.avg(EmbeddingImagem.distancia_centroide),
+        )
+        .outerjoin(EmbeddingImagem, EmbeddingImagem.cluster_id == Cluster.id)
+        .where(Cluster.execucao_id == execucao_id)
+        .group_by(Cluster.id)
+        .order_by(func.count(EmbeddingImagem.imagem_id).desc(), Cluster.indice)
+    )
+    return [
+        (cluster, int(tamanho), None if media is None else float(media))
+        for cluster, tamanho, media in linhas
+    ]
 
 
 async def imagens_do_cluster(

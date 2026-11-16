@@ -56,7 +56,7 @@ docker exec <container> alembic upgrade head        # migrações
 
 Documentadas no [.env.example](.env.example). Principais: `POSTGRES_URL`, `REDIS_URL`, `AMQP_URL`,
 `AUTH_JWKS_URL`, `AUTH_ISSUER`, `MEDIA_BASE_URL`, `TRADUZIR_BUSCA`/`TRADUCAO_MODELO` (busca por texto), `LOTE_MAX`/`LOTE_ESPERA_MS` (lote de inferência),
-`HNSW_EF_SEARCH`, `K_MIN`/`K_MAX`.
+`HNSW_EF_SEARCH`, `K_MIN`/`K_MAX`, `CLUSTERIZAR_A_CADA_IMAGENS`/`CLUSTERIZAR_INTERVALO_HORAS` (recálculo automático das categorias).
 
 ## Comandos
 

@@ -14,6 +14,6 @@ Fonte: seção 3 de `decisoes-e-achados.md` do gateway. Implementação: `app/ra
 - **Idempotência**: upsert por `imagem_id`; exclusão grava tombstone em `imagens_excluidas` e um
   `image.processed.post` atrasado não recria o vetor.
 - Payload: valide `imageId`/`ownerId` (`ler_ids`) e aceite campos extras. Use `thumbnailUrl` quando vier.
-- Este serviço não publica eventos do grupo. A fila interna `vse.comandos.clusterizar` é só para a rota admin
-  pedir o k-means ao worker.
+- Este serviço não publica eventos do grupo. A fila interna `vse.comandos.clusterizar` é só para pedir o
+  k-means ao worker (rota admin ou o próprio worker, no recálculo automático).
 - Mudou fila ou evento? Atualize `docs/api.md` (seção Eventos).

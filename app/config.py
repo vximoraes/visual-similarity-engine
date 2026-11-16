@@ -36,8 +36,10 @@ class Config(BaseSettings):
     cache_ttl_texto: int = 86_400
 
     # Clusterização: faixa de k testada pela silhueta
-    k_min: int = 2
-    k_max: int = 30
+    k_min: int = 10
+    k_max: int = 40
+    clusterizar_a_cada_imagens: int = 500
+    clusterizar_intervalo_horas: float = 24
 
     def origens_permitidas(self) -> list[str]:
         """A origem do próprio site (o "iss" do JWT é a URL pública) e as extras de CORS_ORIGINS"""

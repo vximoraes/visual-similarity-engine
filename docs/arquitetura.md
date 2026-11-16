@@ -41,6 +41,7 @@ C4Container
   Rel(worker, media, "GET thumbnail 224px", "HTTPS")
   Rel(worker, pg, "upsert de embeddings, clusters", "SQL")
   Rel(worker, redis, "invalida cache", "RESP")
+  Rel(worker, mq, "vse.comandos.clusterizar (recálculo automático)", "AMQP")
 ```
 
 API e worker são a mesma imagem Docker (comandos diferentes). Os pesos do CLIP vão dentro da imagem.
@@ -99,7 +100,7 @@ sequenceDiagram
 | Busca por texto | Consulta traduzida para inglês por um MarianMT local (~85 ms) antes do encoder do CLIP (~25 ms); o vetor fica 1 dia no Redis |
 | Busca | Índice **HNSW** (`vector_cosine_ops`, m=16, ef_construction=64); `hnsw.ef_search` configurável |
 | Cache | Redis: semelhantes por imagem (TTL 5 min, invalidado quando o vetor muda ou é apagado) e vetor de cada busca de texto (TTL 1 dia). Redis fora do ar não derruba nada |
-| Categorias | Imagem nova é classificada na hora pelo centroide mais próximo (produto interno com k vetores em memória); o k-means pesado roda só sob demanda |
+| Categorias | Imagem nova é classificada na hora pelo centroide mais próximo (produto interno com k vetores em memória); o k-means pesado roda sob demanda ou quando o worker pede (N imagens novas ou X horas) |
 | Filas | Canais separados: o prefetch do lote (`LOTE_MAX*2`) não trava exclusões nem o k-means |
 | Escala | Mais réplicas do worker dividem a fila; a trava `pg_try_advisory_xact_lock` garante um k-means por vez |
 
@@ -110,8 +111,8 @@ sequenceDiagram
 | pgvector (e não um banco vetorial dedicado) | Mesmo Postgres do resto do grupo, transações com clusters e migrações versionadas; HNSW basta para o volume do projeto |
 | Vetores normalizados | Distância de cosseno = 1 - produto interno; k-means euclidiano sobre vetores unitários vira k-means esférico |
 | Semelhantes por KNN no espaço inteiro, não só dentro do cluster | O cluster é categoria para navegar; restringir a busca a ele perderia vizinhos na fronteira entre clusters |
-| k escolhido pela silhueta (cosseno) | Sem número mágico de categorias; testa até 12 valores entre `K_MIN` e `K_MAX` |
-| Rótulo da categoria por zero-shot do CLIP | Centroide comparado com "a photo of <termo>" de um vocabulário (`app/clusterizacao.py`) |
+| k escolhido pela silhueta (cosseno) | Sem número mágico de categorias; testa até 12 valores entre `K_MIN` (10) e `K_MAX` (40): abaixo de 10 a silhueta escolhia k = 2 nos dados reais ([clusterizacao.md](clusterizacao.md#4-avaliação-com-dados-reais)) |
+| Rótulo da categoria por zero-shot do CLIP | Cada imagem vota no termo mais parecido de um vocabulário de 111 termos (média de três frases por termo); o cluster fica com o mais votado, sem repetir rótulo (`app/clusterizacao.py`) |
 | Tombstone `imagens_excluidas` | Evento de exclusão pode chegar antes do processamento: o vetor não é recriado |
 | Filas `vse.*` | Não disputa mensagens com o `similaridade` do professor no mesmo broker |
 | Busca por texto traduzida para inglês (`TRADUZIR_BUSCA`) | O CLIP só foi treinado em inglês: em português a precisão@10 era 46,4% e com a tradução é 80,7% (`docs/avaliacao.md`); modelo local, sem serviço externo |

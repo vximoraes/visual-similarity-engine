@@ -11,13 +11,13 @@ from collections.abc import AsyncGenerator
 import aio_pika
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app import repository
 from app.config import config
 from app.db import Sessao
 from app.jobs import clusterizar
-from app.models import EmbeddingImagem
+from app.models import EmbeddingImagem, ExecucaoClusterizacao
 from app.rabbit import EXCHANGE
 from app.worker import principal
 from tests.conftest import assinar, imagem_jpeg, publicar_thumb
@@ -185,6 +185,40 @@ async def test_clusterizar_separa_as_cores_e_classifica_imagens_novas(
     pagina = await cliente.get(f"/api/similar/clusters/{next(iter(vermelhos))}/images?limit=2")
     assert len(pagina.json()["data"]["items"]) == 2
     assert pagina.json()["data"]["nextCursor"] is not None
+
+
+async def test_estatisticas_da_clusterizacao_ativa_so_para_admin(
+    cliente: AsyncClient, imagens: dict[str, list[uuid.UUID]]
+) -> None:
+    rota = "/api/similar/admin/clusterizacoes/ativa"
+    assert (await cliente.get(rota)).status_code == 401
+    usuario = {"Authorization": f"Bearer {assinar()}"}
+    assert (await cliente.get(rota, headers=usuario)).status_code == 403
+
+    admin = {"Authorization": f"Bearer {assinar(role='admin')}"}
+    async with Sessao() as sessao, sessao.begin():
+        await sessao.execute(update(ExecucaoClusterizacao).values(ativa=False))
+    sem_ativa = await cliente.get(rota, headers=admin)
+    assert sem_ativa.status_code == 404
+    assert sem_ativa.json() == {
+        "data": None,
+        "errors": [{"message": "Nenhuma clusterização ativa"}],
+    }
+
+    config().k_max = 4
+    execucao_id = await clusterizar.executar(forcar=True)
+    res = await cliente.get(rota, headers=admin)
+
+    assert res.status_code == 200
+    dados = res.json()["data"]
+    assert dados["id"] == str(execucao_id)
+    assert dados["k"] == len(dados["clusters"]) == 2
+    assert 0 < dados["silhueta"] <= 1
+    assert dados["ativadoEm"]
+    assert sum(c["tamanho"] for c in dados["clusters"]) == dados["amostras"]
+    for cluster in dados["clusters"]:
+        assert cluster["rotulo"]
+        assert 0 <= cluster["distanciaMedia"] < 1
 
 
 async def test_exclusao_remove_e_nao_volta(

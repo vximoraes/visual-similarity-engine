@@ -1,13 +1,14 @@
-import json
-from datetime import UTC, datetime
+import uuid
+from datetime import datetime
 from typing import Annotated
 
-import aio_pika
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from app import repository
 from app.auth import Usuario, exigir_admin
-from app.rabbit import FILA_CLUSTERIZAR
+from app.db import Sessao
+from app.rabbit import pedir_clusterizacao as publicar_pedido
 from app.routes import Resposta
 
 router = APIRouter(prefix="/api/similar/admin", tags=["admin"])
@@ -15,6 +16,22 @@ router = APIRouter(prefix="/api/similar/admin", tags=["admin"])
 
 class PedidoAceito(BaseModel):
     status: str
+
+
+class ClusterEstatisticas(BaseModel):
+    id: uuid.UUID
+    rotulo: str | None
+    tamanho: int
+    distanciaMedia: float | None
+
+
+class ClusterizacaoAtiva(BaseModel):
+    id: uuid.UUID
+    k: int | None
+    silhueta: float | None
+    amostras: int
+    ativadoEm: datetime | None
+    clusters: list[ClusterEstatisticas]
 
 
 @router.post("/clusterizacoes", status_code=202, summary="Recalcula as categorias (k-means)")
@@ -25,13 +42,31 @@ async def pedir_clusterizacao(
     O k-means roda no worker (CPU pesada fora da API). Pedidos repetidos enquanto um roda são
     descartados pelo worker, que só reprocessa se houver imagens novas desde a última execução.
     """
-    corpo = {"pedidoPor": usuario.id, "pedidoEm": datetime.now(UTC).isoformat()}
-    await request.app.state.canal.default_exchange.publish(
-        aio_pika.Message(
-            json.dumps(corpo).encode(),
-            content_type="application/json",
-            delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-        ),
-        routing_key=FILA_CLUSTERIZAR,
-    )
+    await publicar_pedido(request.app.state.canal.default_exchange, usuario.id)
     return Resposta(data=PedidoAceito(status="agendada"))
+
+
+@router.get("/clusterizacoes/ativa", summary="Estatísticas da clusterização ativa")
+async def clusterizacao_ativa(
+    _usuario: Annotated[Usuario, Depends(exigir_admin)],
+) -> Resposta[ClusterizacaoAtiva]:
+    async with Sessao() as sessao:
+        execucao = await repository.execucao_ativa(sessao)
+        if execucao is None:
+            raise HTTPException(404, "Nenhuma clusterização ativa")
+        clusters = await repository.estatisticas_clusters(sessao, execucao.id)
+    return Resposta(
+        data=ClusterizacaoAtiva(
+            id=execucao.id,
+            k=execucao.k,
+            silhueta=execucao.silhueta,
+            amostras=execucao.amostras,
+            ativadoEm=execucao.ativado_em,
+            clusters=[
+                ClusterEstatisticas(
+                    id=cluster.id, rotulo=cluster.rotulo, tamanho=tamanho, distanciaMedia=media
+                )
+                for cluster, tamanho, media in clusters
+            ],
+        )
+    )

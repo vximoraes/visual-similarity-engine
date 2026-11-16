@@ -8,6 +8,8 @@ Rodar à mão: `uv run python -m app.jobs.clusterizar` (ou pela rota admin, que 
 import asyncio
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 
 import numpy as np
 from sqlalchemy import func, select, text, update
@@ -33,6 +35,40 @@ async def precisa_recalcular() -> bool:
             await sessao.execute(select(func.count(), func.max(EmbeddingImagem.atualizado_em)))
         ).one()
     return bool(total != ativa.amostras or (ultima and ultima > ativa.ativado_em))
+
+
+def deve_pedir(novas: int, horas: float | None, a_cada: int, intervalo_horas: float) -> bool:
+    if novas == 0:
+        return False
+    return novas >= a_cada or (horas is not None and horas >= intervalo_horas)
+
+
+class PedidoAutomatico:
+    def __init__(self, publicar: Callable[[], Awaitable[None]]) -> None:
+        self.publicar = publicar
+        self.ultimo: tuple[uuid.UUID | None, datetime] | None = None
+
+    async def verificar(self) -> bool:
+        async with Sessao() as sessao:
+            ativa = await repository.execucao_ativa(sessao)
+            desde = ativa.ativado_em if ativa else None
+            novas = await repository.contar_novas(sessao, desde)
+        execucao_id = ativa.id if ativa else None
+        agora = datetime.now(UTC)
+        intervalo = config().clusterizar_intervalo_horas
+        if (
+            self.ultimo is not None
+            and self.ultimo[0] == execucao_id
+            and agora - self.ultimo[1] < timedelta(hours=intervalo)
+        ):
+            return False
+        horas = (agora - desde).total_seconds() / 3600 if desde else None
+        if not deve_pedir(novas, horas, config().clusterizar_a_cada_imagens, intervalo):
+            return False
+        await self.publicar()
+        self.ultimo = (execucao_id, agora)
+        log.info("Recálculo das categorias pedido: %d imagens novas", novas)
+        return True
 
 
 async def executar(forcar: bool = False) -> uuid.UUID | None:
@@ -64,9 +100,12 @@ async def executar(forcar: bool = False) -> uuid.UUID | None:
             log.warning("Clusterização não executada: %s", erro)
             return execucao_id
 
-        termos = [f"a photo of {termo}" for termo in clusterizacao.VOCABULARIO]
-        vetores_vocabulario = await asyncio.to_thread(modelo.codificar_textos, termos)
-        rotulos = clusterizacao.rotular(resultado.centroides, vetores_vocabulario)
+        vetores_vocabulario = await asyncio.to_thread(
+            clusterizacao.vetores_do_vocabulario, modelo.codificar_textos
+        )
+        rotulos = clusterizacao.rotular(
+            vetores, resultado.rotulos, resultado.k, vetores_vocabulario
+        )
 
         clusters: list[Cluster] = []
         for indice in range(resultado.k):
